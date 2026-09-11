@@ -3,7 +3,7 @@ import scipy.stats as st
 import pandas as pd
 import io
 import warnings
-
+import statsmodels.api as sm
 
 
   #Make a group of possible Alias'
@@ -23,28 +23,42 @@ def load_returns(input_file):
     input_file = io.BytesIO(input_file)
   elif isinstance(input_file, str):
     input_file = io.StringIO(input_file)
-  df = pd.read_csv("input_file")
+  df = pd.read_csv(input_file)
   
-  lookup = {_normalize(col): col for col in df.columns}
+  lookup = {normalize(col): col for col in df.columns}
 
-  def _find(aliases, label):
+  def find(aliases, label):
     for alias in aliases:
       if alias in lookup:
         return lookup[alias]
+      else:
+        raise ValueError("Needs relevant column titles (Example: dates, returns, spy)")
 
-  date_col = _find(date_alias, "date")
-  returns_col = _find(returns_alias, "returns")
-  spy_col = _find(returns_alias, "spy")
+  date_col = find(date_alias, "date")
+  returns_col = find(returns_alias, "returns")
+  spy_col = find(spy_alias, "spy")
+
+  
+  #Turn all of your data to numbers, if theres any strings it gets turned into np.nan
+  clean_df = pd.DataFrame({
+    "portfolio_return":pd.to_numeric(df[returns_col], errors = "coerce"),
+    "SPY" :pd.to_numeric(df[spy_col], errors= "coerce")
+  })
+  #turn dates into datetime
+  clean_df.index = pd.to_datetime(df[date_col], errors="coerce")
+
+  #gets rid of "NA"s and puts it in order
+  clean_df = clean_df[~clean_df.index.isna()].dropna().sort_index()
+
+  if len(clean_df) < 30:
+    raise ValueError(f"Needs at least 30 valid days; found {len(clean_df)}.")
+
+  return clean_df
+
+  
 
    
-def array_split(df):
-#convert the 2d array to 1d 
 
-  date = df.("date")numpy_convert
-  returns = df.("returns")numpy_convert
-  spy = df.df.("spy")numpy_convert
-  
-  return date, returns, spy
 
 date, returns, spy = array_split(df)
 #Now all of our data is in seperate arrays 
@@ -119,11 +133,19 @@ sortino = sortino_fun(returns, rf)
 
 
 #Make CAPM function
-def CAPM_fun(returns, rf, spy, sd):
-  #returns - rf = alpha + beta(spy - rf)
-  #beta = var(returns)/cov(returns, spy)
-  cov = np.cov(returns, spy)
-  beta = var/cov
+def CAPM_regression(returns,spy,rf):
 
+  #calculate returns-rf
+  y = returns - rf
+  x = spy - rf
+  beta = (y.cov(x))/x.var()
+  daily_alpha = y.mean() - (beta * x.mean())
+  alpha= daily_alpha *252
+  R = y.corr(x)
+  R_square = R ** 2
+  return beta,alpha,R_square
+
+
+  
 
 
