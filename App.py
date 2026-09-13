@@ -4,6 +4,7 @@ import pandas as pd
 import io
 import warnings
 import statsmodels.api as sm
+import getFamaFrenchFactors as gff
 
 
   #Make a group of possible Alias'
@@ -54,10 +55,16 @@ def load_returns(input_file):
     raise ValueError(f"Needs at least 30 valid days; found {len(clean_df)}.")
 
   return clean_df
-
   
+#Fama french factors, also has risk free rate(rf)
+def fama_french(start, end):
+  factors = gff.famaFrench3Factor(frequency="d")
 
-   
+  #Change date column into datetime format under pd
+  factors["date"] = pd.to_datetime(factors["date_ff_factors"])
+  factors = factors.set_index("date").sort_index()
+
+  rf_series = factors["RF"]
 
 
 date, returns, spy = array_split(df)
