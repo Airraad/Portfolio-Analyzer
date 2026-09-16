@@ -27,13 +27,13 @@ def load_returns(input_file):
   df = pd.read_csv(input_file)
   
   lookup = {normalize(col): col for col in df.columns}
-
+  
+  #check for alias names in list. else raise error
   def find(aliases, label):
     for alias in aliases:
       if alias in lookup:
         return lookup[alias]
-      else:
-        raise ValueError("Needs relevant column titles (Example: dates, returns, spy)")
+      raise ValueError("Needs relevant column titles (Example: dates, returns, spy)")
 
   date_col = find(date_alias, "date")
   returns_col = find(returns_alias, "returns")
@@ -42,8 +42,8 @@ def load_returns(input_file):
   
   #Turn all of your data to numbers, if theres any strings it gets turned into np.nan
   clean_df = pd.DataFrame({
-    "portfolio_return":pd.to_numeric(df[returns_col], errors = "coerce"),
-    "SPY" :pd.to_numeric(df[spy_col], errors= "coerce")
+    "returns":pd.to_numeric(df[returns_col], errors = "coerce"),
+    "spy" :pd.to_numeric(df[spy_col], errors= "coerce")
   })
   #turn dates into datetime
   clean_df.index = pd.to_datetime(df[date_col], errors="coerce")
@@ -53,8 +53,15 @@ def load_returns(input_file):
 
   if len(clean_df) < 30:
     raise ValueError(f"Needs at least 30 valid days; found {len(clean_df)}.")
+    
+  start = clean_df.index.min()
+  end = clean_df.index.max()
+  
+  return clean_df, start, end
 
-  return clean_df
+ 
+clean_df, start, end = load_returns(input_file)
+
   
 #Fama french factors, also has risk free rate(rf)
 def fama_french(start, end):
@@ -63,12 +70,35 @@ def fama_french(start, end):
   #Change date column into datetime format under pd
   factors["date"] = pd.to_datetime(factors["date_ff_factors"])
   factors = factors.set_index("date").sort_index()
+  #isolate date segment
+  factors_slice = factors.loc[start:end]
+  #extraction
+  rf = factors_sliced["RF"]
+  mkt_rf = factors_sliced["Mkt-Rf"]
+  smb = factors_sliced["SMB"]
+  hml = factors_sliced["HML"]
+  return factors_sliced, mkt_rf, smb, hml, rf
 
-  rf_series = factors["RF"]
+factors_df, mkt_rf, smb, hml, rf = fama_french(start, end)
+
+def fama_french_regression(returns, factors_df):
+  #Merge the two dataframes so everthing is synced for convenience.
+  merged = pd.concat([returns.rename("returns"), factors_df], axis = 1, join = "inner").dropna()
+  excessy = merged["returns"] - merged["RF"]
+  excessx = merged["SPY"] - merged["Mkt-RF"]
+  #Pull out variables we'll show
+  X = merged[["Mkt-RF", "SMB", "HML"]]
+
+  #Original model:
+  #y = a + (b1x1) + (b2x2) + (b3x3).
 
 
-date, returns, spy = array_split(df)
-#Now all of our data is in seperate arrays 
+
+
+
+
+
+
 
 #Solve for an array of cumulative returns
 def wealth_index (returns):
@@ -77,13 +107,13 @@ def wealth_index (returns):
   wealth_array = initial* (1+returns).cumprod()
   return wealth_array
 
-wealth_array = wealth_index(returns, initial)
+wealth_array = wealth_index(returns)
 
 
 #Calculate Drawdown array
-def drawdown_fun(returns)
-  peak = wealth_array.cummax()
-  drawdown = (wealth_array - peak)/peak
+def drawdown_fun(returns):
+  peak = returns.cummax()
+  drawdown = (returns - peak)/peak
   return drawdown
 
 drawdown = drawdown_series(returns)
@@ -131,7 +161,7 @@ sharpe_annual = sharpe_fun(returns, rf)
 def sortino_fun(returns, rf):
   sortino_excess=np.minimum(excess, 0)
   dd = (np.sqrt(np.mean(sortino_excess**2)))
-  if dd = 0 or np.isnan(dd):
+  if dd == 0 or np.isnan(dd):
     return np.nan
   sortino= (np.mean(returns))/dd *np.sqrt(252)
   return sortino
@@ -153,6 +183,6 @@ def CAPM_regression(returns,spy,rf):
   return beta,alpha,R_square
 
 
-  
+
 
 
