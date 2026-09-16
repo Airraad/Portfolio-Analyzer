@@ -92,8 +92,11 @@ def fama_french_regression(returns, factors_df):
   #Original model:
   #y = a + (b1x1) + (b2x2) + (b3x3).
 
+  x_const = sm.add_constant(x)
 
+  model = sm.OLS(y, x_const).fit()
 
+  
 
 
 
