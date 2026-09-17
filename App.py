@@ -33,7 +33,7 @@ def load_returns(input_file):
     for alias in aliases:
       if alias in lookup:
         return lookup[alias]
-      raise ValueError("Needs relevant column titles (Example: dates, returns, spy)")
+    raise ValueError("Needs relevant column titles (Example: dates, returns, spy)")
 
   date_col = find(date_alias, "date")
   returns_col = find(returns_alias, "returns")
@@ -61,7 +61,7 @@ def load_returns(input_file):
 
  
 clean_df, start, end = load_returns(input_file)
-
+returns = clean_df[returns]
   
 #Fama french factors, also has risk free rate(rf)
 def fama_french(start, end):
@@ -71,7 +71,7 @@ def fama_french(start, end):
   factors["date"] = pd.to_datetime(factors["date_ff_factors"])
   factors = factors.set_index("date").sort_index()
   #isolate date segment
-  factors_slice = factors.loc[start:end]
+  factors_sliced = factors.loc[start:end]
   #extraction
   rf = factors_sliced["RF"]
   mkt_rf = factors_sliced["Mkt-Rf"]
@@ -85,9 +85,9 @@ def fama_french_regression(returns, factors_df):
   #Merge the two dataframes so everthing is synced for convenience.
   merged = pd.concat([returns.rename("returns"), factors_df], axis = 1, join = "inner").dropna()
   excessy = merged["returns"] - merged["RF"]
-  excessx = merged["SPY"] - merged["Mkt-RF"]
+  excessx = merged["SPY"] - merged["Mkt-Rf"]
   #Pull out variables we'll show
-  X = merged[["Mkt-RF", "SMB", "HML"]]
+  x = merged[["Mkt-RF", "SMB", "HML"]]
 
   #Original model:
   #y = a + (b1x1) + (b2x2) + (b3x3).
@@ -96,11 +96,13 @@ def fama_french_regression(returns, factors_df):
 #set up least squares problem. the x const we added makes sure that alpha has a coefficient of 1 and not 0. .fit() performs matrix algebra of (X^T*X)^-1 * X^T * y to calculate best fit coefficients
   model = sm.OLS(y, x_const).fit()
 
-  alpha = float(model.params["const"] * 252
-  beta_mkt = float(model.params["Mkt-RF"] 
-  beta_smb = float(model.params["SMB"]  
-  beta_hml = float(model.params["HML"]  
+  alpha = float(model.params["const"]) * 252
+  beta_mkt = float(model.params["Mkt-Rf"]) 
+  beta_smb = float(model.params["SMB"]) 
+  beta_hml = float(model.params["HML"]) 
   r_squared = float(model.rsquared)
+  return alpha, beta_mkt, beta_smb, beta_hml, r_squared
+alpha, beta_mkt, beta_smb, beta_hml, r_squared = fama_french_regression(returns, factors_df)  
 
 
 
@@ -111,12 +113,13 @@ def wealth_index (returns):
   wealth_array = initial* (1+returns).cumprod()
   return wealth_array
 
-wealth_array = wealth_index(returns)
 
+wealth = wealth_index(returns)
 
 #Calculate Drawdown array
 def drawdown_fun(returns):
-  peak = returns.cummax()
+  
+  peak = wealth.cummax()
   drawdown = (returns - peak)/peak
   return drawdown
 
@@ -140,13 +143,13 @@ def CAGR_fun (returns, years):
   total_growth = (1+returns).prod()
   if total_growth <= 0:
     return -1.0
-  CAGR = total_growth**(1/years)) - 1
+  CAGR = total_growth**(1/years) - 1
   return CAGR
 
 CAGR = CAGR_fun(returns)
 
 excess = returns - rf
-sd = sd
+sd = excess.std(ddof=1)
 var = sd**2
 
 #Calculate Sharpe
@@ -184,7 +187,9 @@ def CAPM_regression(returns,spy,rf):
   alpha= daily_alpha *252
   R = y.corr(x)
   R_square = R ** 2
-  return beta,alpha,R_square
+  return beta , alpha, R_square
+          
+  
 
 
 
