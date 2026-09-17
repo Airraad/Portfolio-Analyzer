@@ -93,13 +93,14 @@ def fama_french_regression(returns, factors_df):
   #y = a + (b1x1) + (b2x2) + (b3x3).
 
   x_const = sm.add_constant(x)
-
+#set up least squares problem. the x const we added makes sure that alpha has a coefficient of 1 and not 0. .fit() performs matrix algebra of (X^T*X)^-1 * X^T * y to calculate best fit coefficients
   model = sm.OLS(y, x_const).fit()
 
-  
-
-
-
+  alpha = float(model.params["const"] * 252
+  beta_mkt = float(model.params["Mkt-RF"] 
+  beta_smb = float(model.params["SMB"]  
+  beta_hml = float(model.params["HML"]  
+  r_squared = float(model.rsquared)
 
 
 
