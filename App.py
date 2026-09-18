@@ -61,7 +61,7 @@ def load_returns(input_file):
 
  
 clean_df, start, end = load_returns(input_file)
-returns = clean_df[returns]
+returns = clean_df["returns"]
   
 #Fama french factors, also has risk free rate(rf)
 def fama_french(start, end):
@@ -188,9 +188,27 @@ def CAPM_regression(returns,spy,rf):
   R = y.corr(x)
   R_square = R ** 2
   return beta , alpha, R_square
-          
-  
 
+#Rolling Betas
+def rolling(returns, factors_df):
+  merged = pd.concat([returns, factors_df], axis = 1, join = "inner").dropna()
+  window = 63
+             
+  
+  for i in range (window, len(merged)):
+    sub = merged.iloc[i - window : i ]  
+    y = sub["returns"] - sub["RF"]
+    x = sub [["Mkt-RF", "SMB", "HML"]]
+    model = sm.OLS(y,x_const).fit()
+    rolling_dates = sub.index[-1]
+    rolling_alpha = float(model.params["const"]) * 252
+    rolling_beta_mkt = float(model.params["Mkt-RF"]) 
+    rolling_beta_smb = float(model.params["SMB"]) 
+    rolling_beta_hml = float(model.params["HML"]) 
+    rolling_r_squared = float(model.rsquared)
+    rolling.loc[len(rolling)] = [rolling_dates, rolling_alpha, rolling_beta_mkt, rolling_beta_smb, rolling_hml, rolling_r_squared]
+  
+  rolling = sm.add_constant(rolling)
 
 
 
