@@ -11,7 +11,7 @@ from analytics import (
     CAPM_regression,
     fama_french,
     fama_french_regression,
-    rolling_fama_french,
+    rolling,
 )
 
 st.set_page_config(page_title="Quant Attribution Dashboard", layout="wide")
