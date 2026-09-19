@@ -200,13 +200,13 @@ def rolling(returns, factors_df):
     y = sub["returns"] - sub["RF"]
     x = sub [["Mkt-RF", "SMB", "HML"]]
     model = sm.OLS(y,x_const).fit()
-    rolling_dates = sub.index[-1]
-    rolling_alpha = float(model.params["const"]) * 252
-    rolling_beta_mkt = float(model.params["Mkt-RF"]) 
-    rolling_beta_smb = float(model.params["SMB"]) 
-    rolling_beta_hml = float(model.params["HML"]) 
-    rolling_r_squared = float(model.rsquared)
-    rolling.loc[len(rolling)] = [rolling_dates, rolling_alpha, rolling_beta_mkt, rolling_beta_smb, rolling_hml, rolling_r_squared]
+    records.append({
+      "date": sub.index[-1],
+      "rolling_alpha": float(model.params["const"]) * 252,
+      "rolling_beta_mkt": float(model.params["Mkt-RF"]),
+      "rolling_beta_smb": float(model.params["SMB"]),
+      "rolling_beta_hml": float(model.params["HML"]),
+      "rolling_r_squared": float(model.rsquared)
   
   rolling = sm.add_constant(rolling)
 
