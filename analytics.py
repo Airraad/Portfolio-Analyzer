@@ -67,18 +67,29 @@ def load_returns(input_file):
 
 
 def fama_french(start, end):
+    
     factors = gff.famaFrench3Factor(frequency="d")
     factors["date"] = pd.to_datetime(factors["date_ff_factors"])
     factors = factors.set_index("date").sort_index()
 
-    factors_sliced = factors.loc[start:end]
+    factor_cols = ["Mkt-RF", "SMB", "HML", "RF"]
+    factors[factor_cols] = factors[factor_cols] / 100.0
 
+    start_str = pd.to_datetime(start).strftime("%Y-%m-%d")
+    end_str = pd.to_datetime(end).strftime("%Y-%m-%d")
+    factors_sliced = factors.loc[start_str:end_str]
+
+    if factors_sliced.empty:
+        raise ValueError(
+            f"No factor data available between {start_str} and {end_str}. "
+            "Note: Kenneth French factor updates have a ~1-2 month reporting lag."
+        )
     rf = factors_sliced["RF"]
     mkt_rf = factors_sliced["Mkt-RF"]
     smb = factors_sliced["SMB"]
     hml = factors_sliced["HML"]
-    return factors_sliced, mkt_rf, smb, hml, rf
 
+    return factors_sliced, mkt_rf, smb, hml, rf
 
 def fama_french_regression(returns, factors_df):
     merged = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
