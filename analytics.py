@@ -171,7 +171,7 @@ def sortino_fun(returns, rf):
   dd = (np.sqrt(np.mean(sortino_excess**2)))
   if dd == 0 or np.isnan(dd):
     return np.nan
-  sortino= (excess.mean()/dd *np.sqrt(252)
+  sortino= (excess.mean())/(dd *np.sqrt(252))
   return sortino
 
 sortino = sortino_fun(returns, rf)
