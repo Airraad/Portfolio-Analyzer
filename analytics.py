@@ -7,6 +7,7 @@ import statsmodels.api as sm
 import getFamaFrenchFactors as gff
 
 
+
   #Make a group of possible Alias'
 spy_alias = {"spy_return", "spy", "sp", "benchmark", "mkt", "benchmark_return", "market", "spy_returns"}
 
@@ -74,7 +75,7 @@ def fama_french(start, end):
   factors_sliced = factors.loc[start:end]
   #extraction
   rf = factors_sliced["RF"]
-  mkt_rf = factors_sliced["Mkt-Rf"]
+  mkt_rf = factors_sliced["Mkt-RF"]
   smb = factors_sliced["SMB"]
   hml = factors_sliced["HML"]
   return factors_sliced, mkt_rf, smb, hml, rf
@@ -94,9 +95,7 @@ def fama_french_regression(returns, factors_df):
 
   x_const = sm.add_constant(x)
 #set up least squares problem. the x const we added makes sure that alpha has a coefficient of 1 and not 0. .fit() performs matrix algebra of (X^T*X)^-1 * X^T * y to calculate best fit coefficients
-  model = sm.OLS(y, x_const).fit()
-
-  alpha = float(model.params["const"]) * 252
+  model = sm.OLS(excessy, x_const).fit() * 252
   beta_mkt = float(model.params["Mkt-Rf"]) 
   beta_smb = float(model.params["SMB"]) 
   beta_hml = float(model.params["HML"]) 
@@ -113,14 +112,14 @@ def wealth_index (returns):
   wealth_array = initial* (1+returns).cumprod()
   return wealth_array
 
+wealth_array = wealth_index (returns)
 
-wealth = wealth_index(returns)
 
 #Calculate Drawdown array
 def drawdown_fun(returns):
-  
+  wealth = wealth_index(returns)
   peak = wealth.cummax()
-  drawdown = (returns - peak)/peak
+  drawdown = (peak - returns)/peak
   return drawdown
 
 drawdown = drawdown_series(returns)
@@ -134,10 +133,11 @@ def max_drawdown(drawdown):
 drawdown_max = max_drawdown(drawdown)
 
 #calculate number of years
-years = len(returns)/252
+
 
 #Calculate CAGR
-def CAGR_fun (returns, years):
+def CAGR_fun (returns):
+  years = len(returns)/252
   if len(returns) == 0:
     return np.nan
   total_growth = (1+returns).prod()
@@ -148,14 +148,14 @@ def CAGR_fun (returns, years):
 
 CAGR = CAGR_fun(returns)
 
-excess = returns - rf
-sd = excess.std(ddof=1)
-var = sd**2
+
 
 #Calculate Sharpe
 def sharpe_fun(returns, rf):
-
-  np.isnan(sd)
+  excess = returns - rf
+  sd = excess.std(ddof=1)
+  if sd == 0 or np.isnan(sd)
+    return np.nan
   daily_sharpe = (excess.mean())/(sd)
   sharpe_annual = daily_sharpe * (np.sqrt(252))
   return sharpe_annual
@@ -166,11 +166,12 @@ sharpe_annual = sharpe_fun(returns, rf)
 
 #Calculate Sortino
 def sortino_fun(returns, rf):
+  excess = returns - rf 
   sortino_excess=np.minimum(excess, 0)
   dd = (np.sqrt(np.mean(sortino_excess**2)))
   if dd == 0 or np.isnan(dd):
     return np.nan
-  sortino= (np.mean(returns))/dd *np.sqrt(252)
+  sortino= (excess.mean()/dd *np.sqrt(252)
   return sortino
 
 sortino = sortino_fun(returns, rf)
@@ -182,7 +183,7 @@ def CAPM_regression(returns,spy,rf):
   #calculate returns-rf
   y = returns - rf
   x = spy - rf
-  beta = (y.cov(x))/x.var()
+  beta = float((y.cov(x))/x.var())
   daily_alpha = y.mean() - (beta * x.mean())
   alpha= daily_alpha *252
   R = y.corr(x)
@@ -191,14 +192,15 @@ def CAPM_regression(returns,spy,rf):
 
 #Rolling Betas
 def rolling(returns, factors_df):
-  merged = pd.concat([returns, factors_df], axis = 1, join = "inner").dropna()
+  merged = pd.concat([returns.rename("returns"), factors_df], axis = 1, join = "inner").dropna()
   window = 63
-             
+  records = []
   
   for i in range (window, len(merged)):
     sub = merged.iloc[i - window : i ]  
     y = sub["returns"] - sub["RF"]
     x = sub [["Mkt-RF", "SMB", "HML"]]
+    x_const = sm.add_constant(x)
     model = sm.OLS(y,x_const).fit()
     records.append({
       "date": sub.index[-1],
@@ -207,9 +209,12 @@ def rolling(returns, factors_df):
       "rolling_beta_smb": float(model.params["SMB"]),
       "rolling_beta_hml": float(model.params["HML"]),
       "rolling_r_squared": float(model.rsquared)
+    })
+  rolling_df = pd.DataFrame(record)
+  if not rolling_df.empty:
+    rolling_df= rolling_df.set_index("date")
+
+  return rolling_df
+  rolling_df = rolling(returns, factors_df)
   
-  rolling = sm.add_constant(rolling)
-
-
-
 
