@@ -6,3 +6,4 @@ statsmodels
 getFamaFrenchFactors
 lxml
 requests
+pandas_datareader
