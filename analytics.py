@@ -154,7 +154,7 @@ CAGR = CAGR_fun(returns)
 def sharpe_fun(returns, rf):
   excess = returns - rf
   sd = excess.std(ddof=1)
-  if sd == 0 or np.isnan(sd)
+  if sd == 0 or np.isnan(sd):
     return np.nan
   daily_sharpe = (excess.mean())/(sd)
   sharpe_annual = daily_sharpe * (np.sqrt(252))
