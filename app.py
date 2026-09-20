@@ -73,7 +73,7 @@ if uploaded_file is not None:
         # 6. Rolling Betas (Style Drift)
         st.subheader("Trailing 63-Day Rolling Factor Exposures (Style Drift)")
         with st.spinner("Calculating rolling factor exposures..."):
-            rolling_df = rolling_fama_french(returns, factors_df, window=63)
+            rolling_df = rolling(returns, factors_df, window=63)
 
         if not rolling_df.empty:
             betas_to_plot = rolling_df[["rolling_beta_mkt", "rolling_beta_smb", "rolling_beta_hml"]]
