@@ -1,4 +1,4 @@
-Quantitative Performance & Factor Attribution Dashboard
+**Quantitative Performance & Factor Attribution Dashboard
 
 A lightweight Streamlit web app built to analyze trading strategy performance and run Fama-French 3-factor regressions. Instead of just looking at raw returns, this tool breaks down exactly where a portfolio's performance is coming from by separating true Alpha from basic market exposure.
 
