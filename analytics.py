@@ -44,8 +44,10 @@ def load_returns(input_file):
 
     if len(clean_df) < 30:
         raise ValueError(f"Need at least 30 valid days; found {len(clean_df)}.")
+    start = df.index.min()
+    end = df.index.max()
 
-    return clean_df
+    return clean_df, start, end
 
 def fama_french(start, end, spy_series=None):
   
