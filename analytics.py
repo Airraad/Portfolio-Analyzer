@@ -85,14 +85,14 @@ def fama_french(start, end, spy_series=None):
     factors_sliced = pd.DataFrame()
 
     # 1. Try Kenneth French library via pandas_datareader
-    try:
-        import pandas_datareader.data as pdr
-        raw = pdr.DataReader("F-F_Research_Data_Factors_daily", "famafrench", start_dt, end_dt)[0]
-        raw.index = pd.to_datetime(raw.index.astype(str)).tz_localize(None).normalize()
+    #try:
+        #import pandas_datareader.data as pdr
+        #raw = pdr.DataReader("F-F_Research_Data_Factors_daily", "famafrench", start_dt, end_dt)[0]
+        #raw.index = pd.to_datetime(raw.index.astype(str)).tz_localize(None).normalize()
         # Convert percent to decimal (1.0 -> 0.01)
-        factors_sliced = (raw / 100.0).loc[start_dt:end_dt]
-    except Exception:
-        pass
+        #factors_sliced = (raw / 100.0).loc[start_dt:end_dt]
+    #except Exception:
+        #pass
 
     # 2. If out of range or server unreachable, anchor Mkt-RF to uploaded SPY returns
     if factors_sliced.empty or len(factors_sliced) < 30:
