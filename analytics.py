@@ -23,16 +23,25 @@ def _normalize(name: str) -> str:
 
 
 def load_returns(input_file):
-    """Read CSV file/bytes and return clean DataFrame with datetime index."""
-    if isinstance(input_file, bytes):
-        input_file = io.BytesIO(input_file)
+    import io
+    
+    # 1. Handle Streamlit buffers securely
+    if hasattr(input_file, "read"):
+        content = input_file.read()
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", errors="replace")
+        input_file = io.StringIO(content)
+    elif isinstance(input_file, bytes):
+        input_file = io.StringIO(input_file.decode("utf-8", errors="replace"))
     elif isinstance(input_file, str) and ("\n" in input_file or "," in input_file):
         input_file = io.StringIO(input_file)
 
-    df = pd.read_csv(input_file)
+    # 2. sep=None allows this to read .csv, .txt, commas, tabs, or spaces
+    df = pd.read_csv(input_file, sep=None, engine="python")
     if df.empty:
-        raise ValueError("The uploaded CSV appears to be empty.")
+        raise ValueError("The uploaded file appears to be empty.")
 
+    # 3. Match your column headers
     lookup = {_normalize(c): c for c in df.columns}
 
     def _find(aliases, label):
@@ -45,12 +54,16 @@ def load_returns(input_file):
     port_col = _find(_PORTFOLIO_ALIASES, "portfolio returns")
     spy_col = _find(_SPY_ALIASES, "spy / benchmark returns")
 
+    # 4. Build the clean DataFrame explicitly naming the columns what app.py expects
     clean_df = pd.DataFrame({
-        "returns": pd.to_numeric(df[port_col], errors="coerce"),
-        "spy": pd.to_numeric(df[spy_col], errors="coerce"),
+        "returns": pd.to_numeric(df[port_col], errors="coerce").values,
+        "spy": pd.to_numeric(df[spy_col], errors="coerce").values,
     })
+    
+    # 5. Lock in the dates as the index
     clean_df.index = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
 
+    # 6. Drop empty/invalid rows and sort
     clean_df = clean_df[~clean_df.index.isna()].dropna().sort_index()
 
     if len(clean_df) < 30:
