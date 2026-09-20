@@ -14,29 +14,26 @@ from analytics import (
     rolling,
 )
 
-st.set_page_config(page_title="Quant Attribution Dashboard", layout="wide")
-st.title("Quantitative Performance & Factor Attribution Dashboard")
+st.set_page_config(page_title="Quantitative Attribution Dashboard", layout="wide")
+st.title("📊 Quantitative Performance & Factor Attribution Dashboard")
 
-# Cache network calls so Streamlit doesn't re-download factors on every user click
-@st.cache_data(show_spinner="Fetching Fama-French Factor Data...")
-def get_cached_factors(start_date, end_date):
-    return fama_french(start_date, end_date)
-
-
-st.sidebar.header("Data Source")
+st.sidebar.header("Upload Data")
 uploaded_file = st.sidebar.file_uploader("Upload Strategy CSV", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        # 1. Ingestion
+        # 1. Parse uploaded CSV
         clean_df, start, end = load_returns(uploaded_file)
         returns = clean_df["returns"]
         spy = clean_df["spy"]
 
-        # 2. Factors
-        factors_df, mkt_rf, smb, hml, rf = get_cached_factors(start, end)
+        st.sidebar.success(f"Loaded {len(clean_df)} trading days")
+        st.sidebar.caption(f"{start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}")
 
-        # 3. High-Level Summary Metrics
+        # 2. Fetch Factor Library (anchored with SPY)
+        factors_df, mkt_rf, smb, hml, rf = fama_french(start, end, spy_series=spy)
+
+        # 3. Performance & Risk Scorecard
         st.subheader("Performance & Risk Scorecard")
         cagr = CAGR_fun(returns)
         dd = drawdown_fun(returns)
@@ -44,45 +41,45 @@ if uploaded_file is not None:
         sharpe = sharpe_fun(returns, rf=rf)
         sortino = sortino_fun(returns, rf=rf)
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("CAGR", f"{cagr:.2%}")
-        col2.metric("Max Drawdown", f"{mdd:.2%}")
-        col3.metric("Sharpe Ratio", f"{sharpe:.2f}")
-        col4.metric("Sortino Ratio", f"{sortino:.2f}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("CAGR", f"{cagr:.2%}")
+        c2.metric("Max Drawdown", f"{mdd:.2%}")
+        c3.metric("Sharpe Ratio", f"{sharpe:.2f}")
+        c4.metric("Sortino Ratio", f"{sortino:.2f}")
 
         # 4. Wealth & Drawdown Curves
         st.subheader("Equity Curve & Drawdowns")
         wealth = wealth_index(returns)
         bench_wealth = wealth_index(spy)
-        chart_data = pd.DataFrame({"Portfolio": wealth, "Benchmark (SPY)": bench_wealth})
-        st.line_chart(chart_data)
+        wealth_df = pd.DataFrame({"Portfolio": wealth, "Benchmark (SPY)": bench_wealth})
 
-        st.line_chart(dd.rename("Drawdown"))
+        st.line_chart(wealth_df)
+        st.line_chart(dd.rename("Portfolio Drawdown"))
 
-        # 5. Factor Attribution (Static)
+        # 5. Factor Attribution Model
         st.subheader("Fama-French 3-Factor Attribution")
         ff_alpha, b_mkt, b_smb, b_hml, ff_r2 = fama_french_regression(returns, factors_df)
 
-        col_a, col_b, col_c, col_d, col_e = st.columns(5)
-        col_a.metric("Annual Alpha", f"{ff_alpha:.2%}")
-        col_b.metric("Market Beta (Mkt-RF)", f"{b_mkt:.2f}")
-        col_c.metric("Size Beta (SMB)", f"{b_smb:.2f}")
-        col_d.metric("Value Beta (HML)", f"{b_hml:.2f}")
-        col_e.metric("R-Squared", f"{ff_r2:.2%}")
+        f1, f2, f3, f4, f5 = st.columns(5)
+        f1.metric("Annual Alpha", f"{ff_alpha:.2%}")
+        f2.metric("Market Beta (Mkt-RF)", f"{b_mkt:.2f}")
+        f3.metric("Size Beta (SMB)", f"{b_smb:.2f}")
+        f4.metric("Value Beta (HML)", f"{b_hml:.2f}")
+        f5.metric("R-Squared", f"{ff_r2:.2%}")
 
-        # 6. Rolling Betas (Style Drift)
-        st.subheader("Trailing 63-Day Rolling Factor Exposures (Style Drift)")
-        with st.spinner("Calculating rolling factor exposures..."):
+        # 6. Style Drift / Rolling Factors
+        st.subheader("Trailing 63-Day Rolling Betas (Style Drift)")
+        if len(clean_df) >= 63:
             rolling_df = rolling(returns, factors_df, window=63)
-
-        if not rolling_df.empty:
-            betas_to_plot = rolling_df[["rolling_beta_mkt", "rolling_beta_smb", "rolling_beta_hml"]]
-            st.line_chart(betas_to_plot)
+            if not rolling_df.empty:
+                st.line_chart(rolling_df[["rolling_beta_mkt", "rolling_beta_smb", "rolling_beta_hml"]])
+            else:
+                st.warning("Insufficient overlapping dates for rolling regression.")
         else:
-            st.warning("Dataset too short to generate 63-day rolling betas.")
+            st.info("Requires at least 63 trading days to display rolling attribution.")
 
     except Exception as e:
-        st.error(f"Processing Error: {e}")
+        st.error(f"Error: {e}")
 
 else:
-    st.info("Upload a CSV file containing your date, portfolio returns, and benchmark columns to start.")
+    st.info("Upload a portfolio CSV from the sidebar to view attribution.")
