@@ -68,6 +68,18 @@ if uploaded_file is not None:
         st.write("4. First 5 rows being regressed:")
         st.dataframe(test_merge.head())
         # ------------------------
+        # --- BYPASS MATH CHECK ---
+        import statsmodels.api as sm
+        
+        # Calculate exactly from the verified diagnostic table
+        test_y = test_merge["returns"] - test_merge["RF"]
+        test_X = sm.add_constant(test_merge[["Mkt-RF", "SMB", "HML"]])
+        
+        test_model = sm.OLS(test_y, test_X).fit()
+        true_beta = test_model.params["Mkt-RF"]
+        
+        st.success(f"🔥 MATHEMATICAL TRUTH (BETA): {true_beta:.2f}")
+        # -------------------------
         # 5. Factor Attribution Model
         st.subheader("Fama-French 3-Factor Attribution")
         ff_alpha, b_mkt, b_smb, b_hml, ff_r2 = fama_french_regression(returns, factors_df)
