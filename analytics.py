@@ -7,6 +7,7 @@ import getFamaFrenchFactors as gff
 import pandas_datareader.data as pdr
 
 def load_returns(input_file):
+    # Handle raw bytes from Flask/Streamlit uploads or string paths
     if isinstance(input_file, bytes):
         input_file = io.BytesIO(input_file)
     elif isinstance(input_file, str) and ("\n" in input_file or "," in input_file):
@@ -16,36 +17,35 @@ def load_returns(input_file):
     if df.empty:
         raise ValueError("Uploaded file is empty.")
 
-    # Lowercase and normalize column names
+    # Normalize column headers
     col_map = {str(c).strip().lower().replace(" ", "_"): c for c in df.columns}
 
     # Match common alias variations
-    date_aliases = ["date", "dates", "datetime", "timestamp", "day"]
-    port_aliases = ["returns", "return", "portfolio_return", "portfolio_returns", "portfolio", "strategy"]
-    spy_aliases  = ["spy", "spy_return", "spy_returns", "benchmark", "benchmark_return", "market"]
+    date_col = next((col_map[c] for c in ["date", "dates", "datetime", "timestamp", "day"] if c in col_map), None)
+    port_col = next((col_map[c] for c in ["returns", "portfolio_return", "portfolio_returns", "return", "portfolio"] if c in col_map), None)
+    spy_col  = next((col_map[c] for c in ["spy", "spy_return", "spy_returns", "benchmark"] if c in col_map), None)
 
-    def find_col(aliases, label):
-        for a in aliases:
-            if a in col_map:
-                return col_map[a]
-        raise ValueError(f"Needs relevant column titles for {label} (Example: dates, returns, spy)")
+    if not date_col or not port_col or not spy_col:
+        raise ValueError("Needs relevant column titles for returns (Example: date, portfolio_return, SPY)")
 
-    date_col = find_col(date_aliases, "dates")
-    port_col = find_col(port_aliases, "returns")
-    spy_col  = find_col(spy_aliases, "spy")
+    # 1. Parse dates as timezone-naive normalized datetime
+    parsed_dates = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
 
-    # Build clean output dataframe
+    # 2. Extract numeric values using .values so pandas doesn't introduce NaNs from index mismatch
     clean_df = pd.DataFrame({
-        "returns": pd.to_numeric(df[port_col], errors="coerce"),
-        "spy": pd.to_numeric(df[spy_col], errors="coerce"),
-    })
-    clean_df.index = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
+        "portfolio_return": pd.to_numeric(df[port_col], errors="coerce").values,
+        "SPY": pd.to_numeric(df[spy_col], errors="coerce").values,
+    }, index=parsed_dates)
+
+    # 3. Drop invalid/placeholder rows (e.g. ellipses) and sort chronologically
     clean_df = clean_df[~clean_df.index.isna()].dropna().sort_index()
 
     if len(clean_df) < 30:
-        raise ValueError(f"Need at least 30 valid days; found {len(clean_df)}.")
-    start = df.index.min()
-    end = df.index.max()
+        raise ValueError(f"Need at least 30 valid trading days; found {len(clean_df)}.")
+
+    # 4. Extract timestamp boundaries
+    start = clean_df.index.min()
+    end = clean_df.index.max()
 
     return clean_df, start, end
 
