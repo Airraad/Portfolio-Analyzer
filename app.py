@@ -68,24 +68,14 @@ if uploaded_file is not None:
         st.write("4. First 5 rows being regressed:")
         st.dataframe(test_merge.head())
         # ------------------------
-        # --- BYPASS MATH CHECK ---
-        import statsmodels.api as sm
-        
-        # Calculate exactly from the verified diagnostic table
-        test_y = test_merge["returns"] - test_merge["RF"]
-        test_X = sm.add_constant(test_merge[["Mkt-RF", "SMB", "HML"]])
-        
-        test_model = sm.OLS(test_y, test_X).fit()
-        true_beta = test_model.params["Mkt-RF"]
-        
-        st.success(f"🔥 MATHEMATICAL TRUTH (BETA): {true_beta:.2f}")
+       
         # -------------------------
         # 5. Factor Attribution Model
         st.subheader("Fama-French 3-Factor Attribution")
         # --- LOCAL REGRESSION FIX ---
         import statsmodels.api as sm
         import analytics
-        st.error(f"Streamlit is secretly importing analytics from here: {analytics.__file__}")
+        
         # We process it right here to guarantee it doesn't use a broken imported file
         merged = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
         excess_y = merged["returns"] - merged["RF"]
