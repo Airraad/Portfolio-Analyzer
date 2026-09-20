@@ -18,7 +18,7 @@ st.set_page_config(page_title="Quantitative Attribution Dashboard", layout="wide
 st.title("📊 Quantitative Performance & Factor Attribution Dashboard")
 
 st.sidebar.header("Upload Data")
-uploaded_file = st.sidebar.file_uploader("Upload Strategy CSV", type=["csv", "txt"])
+uploaded_file = st.sidebar.file_uploader("Upload Strategy CSV")
 if uploaded_file is not None:
     try:
         # 1. Parse uploaded CSV
