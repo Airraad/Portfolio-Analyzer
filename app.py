@@ -55,21 +55,6 @@ if uploaded_file is not None:
         st.line_chart(wealth_df)
         st.line_chart(dd.rename("Portfolio Drawdown"))
 
-        # --- DIAGNOSTIC BLOCK ---
-        st.error("### DIAGNOSTIC CHECK")
-        st.write("1. Length of Returns:", len(returns))
-        st.write("2. Length of Factors:", len(factors_df))
-        
-        # Merge them exactly as the regression does
-        test_merge = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
-        st.write("3. Length after Merge (If this drops, dates are misaligned):", len(test_merge))
-        
-        # Show the raw numbers going into the regression
-        st.write("4. First 5 rows being regressed:")
-        st.dataframe(test_merge.head())
-        # ------------------------
-       
-        # -------------------------
         # 5. Factor Attribution Model
         st.subheader("Fama-French 3-Factor Attribution")
         # --- LOCAL REGRESSION FIX ---
