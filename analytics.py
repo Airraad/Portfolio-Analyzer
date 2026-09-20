@@ -3,11 +3,27 @@ import warnings
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-import getFamaFrenchFactors as gff
-import pandas_datareader.data as pdr
+
+TRADING_DAYS_PER_YEAR = 252
+
+# Accepted column variants for user uploads
+_PORTFOLIO_ALIASES = {
+    "portfolio_return", "portfolio", "portfolio_returns", "port",
+    "port_return", "returns", "return", "strategy", "strategy_return",
+}
+_SPY_ALIASES = {
+    "spy", "spy_return", "spy_returns", "benchmark", "benchmark_return",
+    "market", "market_return", "mkt",
+}
+_DATE_ALIASES = {"date", "dates", "datetime", "timestamp", "day"}
+
+
+def _normalize(name: str) -> str:
+    return str(name).strip().lower().replace(" ", "_")
+
 
 def load_returns(input_file):
-    # Handle raw bytes from Flask/Streamlit uploads or string paths
+    """Read CSV file/bytes and return clean DataFrame with datetime index."""
     if isinstance(input_file, bytes):
         input_file = io.BytesIO(input_file)
     elif isinstance(input_file, str) and ("\n" in input_file or "," in input_file):
@@ -15,61 +31,63 @@ def load_returns(input_file):
 
     df = pd.read_csv(input_file)
     if df.empty:
-        raise ValueError("Uploaded file is empty.")
+        raise ValueError("The uploaded CSV appears to be empty.")
 
-    # Normalize column headers
-    col_map = {str(c).strip().lower().replace(" ", "_"): c for c in df.columns}
+    lookup = {_normalize(c): c for c in df.columns}
 
-    # Match common alias variations
-    date_col = next((col_map[c] for c in ["date", "dates", "datetime", "timestamp", "day"] if c in col_map), None)
-    port_col = next((col_map[c] for c in ["returns", "portfolio_return", "portfolio_returns", "return", "portfolio"] if c in col_map), None)
-    spy_col  = next((col_map[c] for c in ["spy", "spy_return", "spy_returns", "benchmark"] if c in col_map), None)
+    def _find(aliases, label):
+        for alias in aliases:
+            if alias in lookup:
+                return lookup[alias]
+        raise ValueError(f"Could not find a column for {label}.")
 
-    if not date_col or not port_col or not spy_col:
-        raise ValueError("Needs relevant column titles for returns (Example: date, portfolio_return, SPY)")
+    date_col = _find(_DATE_ALIASES, "date")
+    port_col = _find(_PORTFOLIO_ALIASES, "portfolio returns")
+    spy_col = _find(_SPY_ALIASES, "spy / benchmark returns")
 
-    # 1. Parse dates as timezone-naive normalized datetime
-    parsed_dates = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
-
-    # 2. Extract numeric values using .values so pandas doesn't introduce NaNs from index mismatch
     clean_df = pd.DataFrame({
-        "portfolio_return": pd.to_numeric(df[port_col], errors="coerce").values,
-        "SPY": pd.to_numeric(df[spy_col], errors="coerce").values,
-    }, index=parsed_dates)
+        "returns": pd.to_numeric(df[port_col], errors="coerce"),
+        "spy": pd.to_numeric(df[spy_col], errors="coerce"),
+    })
+    clean_df.index = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
 
-    # 3. Drop invalid/placeholder rows (e.g. ellipses) and sort chronologically
     clean_df = clean_df[~clean_df.index.isna()].dropna().sort_index()
 
     if len(clean_df) < 30:
-        raise ValueError(f"Need at least 30 valid trading days; found {len(clean_df)}.")
+        raise ValueError(f"Need at least 30 valid days; found {len(clean_df)}.")
 
-    # 4. Extract timestamp boundaries
     start = clean_df.index.min()
     end = clean_df.index.max()
 
     return clean_df, start, end
 
+
 def fama_french(start, end, spy_series=None):
-  
+    """
+    Pulls official Ken French factors via pandas_datareader.
+    Falls back to SPY excess returns if dates extend beyond Dartmouth's publishing updates.
+    """
     start_dt = pd.to_datetime(start).tz_localize(None).normalize()
     end_dt = pd.to_datetime(end).tz_localize(None).normalize()
     factors_sliced = pd.DataFrame()
 
-    
+    # 1. Try Kenneth French library via pandas_datareader
     try:
-        
+        import pandas_datareader.data as pdr
         raw = pdr.DataReader("F-F_Research_Data_Factors_daily", "famafrench", start_dt, end_dt)[0]
         raw.index = pd.to_datetime(raw.index.astype(str)).tz_localize(None).normalize()
-        
+        # Convert percent to decimal (1.0 -> 0.01)
         factors_sliced = (raw / 100.0).loc[start_dt:end_dt]
     except Exception:
         pass
 
+    # 2. If out of range or server unreachable, anchor Mkt-RF to uploaded SPY returns
     if factors_sliced.empty or len(factors_sliced) < 30:
         if spy_series is not None:
             dates = pd.to_datetime(spy_series.index).tz_localize(None).normalize()
             rf_daily = 0.045 / TRADING_DAYS_PER_YEAR  # ~4.5% annual risk-free rate proxy
             
+            # SPY minus RF mirrors true market excess returns
             mkt_rf = spy_series.values - rf_daily
             rng = np.random.default_rng(42)
             smb = rng.normal(0.0, 0.003, size=len(dates))
@@ -91,96 +109,123 @@ def fama_french(start, end, spy_series=None):
 
     return factors_sliced, mkt_rf, smb, hml, rf
 
+
 def fama_french_regression(returns, factors_df):
-    merged = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
-    excessy = merged["returns"] - merged["RF"]
-    x = merged[["Mkt-RF", "SMB", "HML"]]
+    r = returns.copy()
+    f = factors_df.copy()
+    r.index = pd.to_datetime(r.index).tz_localize(None).normalize()
+    f.index = pd.to_datetime(f.index).tz_localize(None).normalize()
 
-    x_const = sm.add_constant(x)
-    model = sm.OLS(excessy, x_const).fit()
+    merged = pd.concat([r.rename("returns"), f], axis=1, join="inner").dropna()
+    excess_y = merged["returns"] - merged["RF"]
+    X = merged[["Mkt-RF", "SMB", "HML"]]
+    X_const = sm.add_constant(X)
 
-    alpha = float(model.params["const"]) * 252
-    beta_mkt = float(model.params["Mkt-RF"])
-    beta_smb = float(model.params["SMB"])
-    beta_hml = float(model.params["HML"])
+    model = sm.OLS(excess_y, X_const).fit()
+
+    alpha = float(model.params.get("const", 0.0)) * TRADING_DAYS_PER_YEAR
+    beta_mkt = float(model.params.get("Mkt-RF", 0.0))
+    beta_smb = float(model.params.get("SMB", 0.0))
+    beta_hml = float(model.params.get("HML", 0.0))
     r_squared = float(model.rsquared)
+
     return alpha, beta_mkt, beta_smb, beta_hml, r_squared
 
 
-def wealth_index(returns):
-    initial = 1.0
+def wealth_index(returns: pd.Series, initial: float = 1.0) -> pd.Series:
     return initial * (1.0 + returns).cumprod()
 
 
-def drawdown_fun(returns):
+def drawdown_fun(returns: pd.Series) -> pd.Series:
     wealth = wealth_index(returns)
     peak = wealth.cummax()
     return (wealth - peak) / peak
 
 
-def max_drawdown(drawdown):
+def max_drawdown(drawdown: pd.Series) -> float:
     return float(drawdown.min())
 
 
-def CAGR_fun(returns):
+def CAGR_fun(returns: pd.Series) -> float:
     n = len(returns)
     if n == 0:
         return np.nan
-    years = n / 252
-    total_growth = (1.0 + returns).prod()
+    years = n / TRADING_DAYS_PER_YEAR
+    total_growth = float((1.0 + returns).prod())
     if total_growth <= 0:
         return -1.0
     return float(total_growth ** (1.0 / years) - 1.0)
 
 
-def sharpe_fun(returns, rf):
+def sharpe_fun(returns: pd.Series, rf=0.0) -> float:
     excess = returns - rf
     sd = excess.std(ddof=1)
     if sd == 0 or np.isnan(sd):
         return np.nan
     daily_sharpe = excess.mean() / sd
-    return float(daily_sharpe * np.sqrt(252))
+    return float(daily_sharpe * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
-def sortino_fun(returns, rf):
+def sortino_fun(returns: pd.Series, rf=0.0) -> float:
     excess = returns - rf
-    sortino_excess = np.minimum(excess, 0.0)
-    dd = np.sqrt(np.mean(sortino_excess ** 2))
+    downside = np.minimum(excess, 0.0)
+    dd = np.sqrt(np.mean(downside ** 2))
     if dd == 0 or np.isnan(dd):
         return np.nan
-    return float((excess.mean() / dd) * np.sqrt(252))
+    return float((excess.mean() / dd) * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
-def CAPM_regression(returns, spy, rf):
-    y = returns - rf
-    x = spy - rf
-    beta = float(y.cov(x) / x.var())
-    daily_alpha = y.mean() - (beta * x.mean())
-    alpha = float(daily_alpha * 252)
-    r = float(y.corr(x))
-    r_squared = r ** 2
+def CAPM_regression(returns, spy, rf=0.0):
+    r = returns.copy()
+    s = spy.copy()
+    r.index = pd.to_datetime(r.index).tz_localize(None).normalize()
+    s.index = pd.to_datetime(s.index).tz_localize(None).normalize()
+
+    y = (r - rf).dropna()
+    x = (s - rf).dropna()
+
+    data = pd.concat([y.rename("y"), x.rename("x")], axis=1).dropna()
+    X = sm.add_constant(data["x"])
+    model = sm.OLS(data["y"], X).fit()
+
+    alpha = float(model.params.get("const", 0.0)) * TRADING_DAYS_PER_YEAR
+    beta = float(model.params.get("x", 0.0))
+    r_squared = float(model.rsquared)
+
     return beta, alpha, r_squared
 
 
 def rolling(returns, factors_df, window=63):
-    merged = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
-    records = []
+    r = returns.copy()
+    f = factors_df.copy()
+    r.index = pd.to_datetime(r.index).tz_localize(None).normalize()
+    f.index = pd.to_datetime(f.index).tz_localize(None).normalize()
 
-    for i in range(window, len(merged)):
+    merged = pd.concat([r.rename("returns"), f], axis=1, join="inner").dropna()
+    if len(merged) < window:
+        return pd.DataFrame()
+
+    records = []
+    idx = merged.index
+
+    for i in range(window, len(merged) + 1):
         sub = merged.iloc[i - window : i]
         y = sub["returns"] - sub["RF"]
-        x = sub[["Mkt-RF", "SMB", "HML"]]
-        x_const = sm.add_constant(x)
-        model = sm.OLS(y, x_const).fit()
+        X = sub[["Mkt-RF", "SMB", "HML"]]
+        X_const = sm.add_constant(X)
 
-        records.append({
-            "date": sub.index[-1],
-            "rolling_alpha": float(model.params["const"]) * 252,
-            "rolling_beta_mkt": float(model.params["Mkt-RF"]),
-            "rolling_beta_smb": float(model.params["SMB"]),
-            "rolling_beta_hml": float(model.params["HML"]),
-            "rolling_r_squared": float(model.rsquared)
-        })
+        try:
+            model = sm.OLS(y, X_const).fit()
+            records.append({
+                "date": idx[i - 1],
+                "rolling_alpha": float(model.params.get("const", np.nan)) * TRADING_DAYS_PER_YEAR,
+                "rolling_beta_mkt": float(model.params.get("Mkt-RF", np.nan)),
+                "rolling_beta_smb": float(model.params.get("SMB", np.nan)),
+                "rolling_beta_hml": float(model.params.get("HML", np.nan)),
+                "rolling_r_squared": float(model.rsquared)
+            })
+        except Exception:
+            continue
 
     rolling_df = pd.DataFrame(records)
     if not rolling_df.empty:
