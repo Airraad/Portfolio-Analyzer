@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import getFamaFrenchFactors as gff
+import pandas_datareader.data as pdr
 
 # Make a group of possible Aliases
 spy_alias = {
@@ -67,33 +68,30 @@ def load_returns(input_file):
 
 
 def fama_french(start, end):
-    factors = gff.famaFrench3Factor(frequency="d")
+    start = pd.to_datetime(start)
+    end = pd.to_datetime(end)
 
-    # 1. Fix date parsing: turn non-date string rows (like 'Mkt-RF' or headers) into NaT
-    factors["date"] = pd.to_datetime(factors["date_ff_factors"], errors="coerce")
-    factors = factors.dropna(subset=["date"]).set_index("date").sort_index()
+    # 1. Try the primary package
+    try:
+        factors = gff.famaFrench3Factor(frequency="d")
+        factors["date"] = pd.to_datetime(factors["date_ff_factors"])
+        factors = factors.set_index("date").sort_index()
+        factor_cols = ["Mkt-RF", "SMB", "HML", "RF"]
+        factors[factor_cols] = factors[factor_cols] / 100.0
+        factors_sliced = factors.loc[start:end]
+        if factors_sliced.empty:
+            raise ValueError("No factor data in slice")
 
-    factor_cols = ["Mkt-RF", "SMB", "HML", "RF"]
+    # 2. Fall back to REAL DATA via pandas_datareader directly from Dartmouth
+    except Exception:
+        # Pulls the official Kenneth French daily dataset
+        raw = pdr.DataReader("F-F_Research_Data_Factors_daily", "famafrench", start, end)[0]
+        raw.index = pd.to_datetime(raw.index.astype(str))
+        
+        # Dartmouth publishes in percentages (1.25 = 1.25%), convert to decimals
+        factors_sliced = raw / 100.0
 
-    # 2. Ensure all factor columns are pure floats
-    for col in factor_cols:
-        factors[col] = pd.to_numeric(factors[col], errors="coerce")
-    factors = factors.dropna(subset=factor_cols)
-
-    # 3. Convert percentages (1.0 -> 0.01) to match decimal portfolio returns
-    factors[factor_cols] = factors[factor_cols] / 100.0
-
-    # 4. Safe string slicing for dates
-    start_str = pd.to_datetime(start).strftime("%Y-%m-%d")
-    end_str = pd.to_datetime(end).strftime("%Y-%m-%d")
-    factors_sliced = factors.loc[start_str:end_str]
-
-    if factors_sliced.empty:
-        raise ValueError(
-            f"No factor data available between {start_str} and {end_str}. "
-            "Note: Kenneth French data has a ~1-2 month reporting lag."
-        )
-
+    # 3. Extract the series for the regressions
     rf = factors_sliced["RF"]
     mkt_rf = factors_sliced["Mkt-RF"]
     smb = factors_sliced["SMB"]
