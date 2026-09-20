@@ -6,66 +6,46 @@ import statsmodels.api as sm
 import getFamaFrenchFactors as gff
 import pandas_datareader.data as pdr
 
-# Make a group of possible Aliases
-spy_alias = {
-    "spy_return", "spy", "sp", "benchmark", "mkt",
-    "benchmark_return", "market", "spy_returns"
-}
-
-returns_alias = {
-    "port", "portfolio", "returns", "portfolio_returns",
-    "return", "data", "strategy", "strategy_return", "port_return"
-}
-
-date_alias = {
-    "date", "dates", "time", "date_occured",
-    "datetime", "day", "timestamp"
-}
-
-
-def normalize(name):
-    return str(name).strip().lower().replace(" ", "_")
-
-# Handle bytes from uploader or direct string/buffer
 def load_returns(input_file):
-    
     if isinstance(input_file, bytes):
         input_file = io.BytesIO(input_file)
-    elif isinstance(input_file, str):
+    elif isinstance(input_file, str) and ("\n" in input_file or "," in input_file):
         input_file = io.StringIO(input_file)
 
     df = pd.read_csv(input_file)
+    if df.empty:
+        raise ValueError("Uploaded file is empty.")
 
-    lookup = {normalize(col): col for col in df.columns}
+    # Lowercase and normalize column names
+    col_map = {str(c).strip().lower().replace(" ", "_"): c for c in df.columns}
 
-    def find(aliases, label):
-        for alias in aliases:
-            if alias in lookup:
-                return lookup[alias]
+    # Match common alias variations
+    date_aliases = ["date", "dates", "datetime", "timestamp", "day"]
+    port_aliases = ["returns", "return", "portfolio_return", "portfolio_returns", "portfolio", "strategy"]
+    spy_aliases  = ["spy", "spy_return", "spy_returns", "benchmark", "benchmark_return", "market"]
+
+    def find_col(aliases, label):
+        for a in aliases:
+            if a in col_map:
+                return col_map[a]
         raise ValueError(f"Needs relevant column titles for {label} (Example: dates, returns, spy)")
 
-    date_col = find(date_alias, "date")
-    returns_col = find(returns_alias, "returns")
-    spy_col = find(spy_alias, "spy")
+    date_col = find_col(date_aliases, "dates")
+    port_col = find_col(port_aliases, "returns")
+    spy_col  = find_col(spy_aliases, "spy")
 
-    # Turn all data to numbers; non-numeric values become NaN
+    # Build clean output dataframe
     clean_df = pd.DataFrame({
-        "returns": pd.to_numeric(df[returns_col], errors="coerce"),
-        "spy": pd.to_numeric(df[spy_col], errors="coerce")
+        "returns": pd.to_numeric(df[port_col], errors="coerce"),
+        "spy": pd.to_numeric(df[spy_col], errors="coerce"),
     })
-    clean_df.index = pd.to_datetime(df[date_col], errors="coerce")
-
-    # Drop NaNs and sort chronologically
+    clean_df.index = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None).dt.normalize()
     clean_df = clean_df[~clean_df.index.isna()].dropna().sort_index()
 
     if len(clean_df) < 30:
-        raise ValueError(f"Needs at least 30 valid days; found {len(clean_df)}.")
+        raise ValueError(f"Need at least 30 valid days; found {len(clean_df)}.")
 
-    start = clean_df.index.min()
-    end = clean_df.index.max()
-
-    return clean_df, start, end
-
+    return clean_df
 
 def fama_french(start, end, spy_series=None):
   
