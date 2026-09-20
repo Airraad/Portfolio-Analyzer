@@ -5,7 +5,8 @@ A lightweight Streamlit web app built to analyze trading strategy performance an
 
 To maximize my learning, I focused entirely on writing the mathematical backend (analytics.py) from scratch. My priority was deeply understanding the core quantitative fundamentals. To make my life easier, I leveraged AI to generate the Streamlit frontend (app.py) and the random data generator (generate_csv.py).
 
-##Features##
+Features
+
 Performance Scorecard: Automatically calculates CAGR, Max Drawdown, Sharpe, and Sortino ratios.
 
 Factor Calculation: Runs OLS regressions to extract Annual Alpha, Market Beta, Size (SMB), and Value (HML) factors.
