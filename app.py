@@ -82,7 +82,24 @@ if uploaded_file is not None:
         # -------------------------
         # 5. Factor Attribution Model
         st.subheader("Fama-French 3-Factor Attribution")
-        ff_alpha, b_mkt, b_smb, b_hml, ff_r2 = fama_french_regression(returns, factors_df)
+        # --- LOCAL REGRESSION FIX ---
+        import statsmodels.api as sm
+        import analytics
+        st.error(f"Streamlit is secretly importing analytics from here: {analytics.__file__}")
+        # We process it right here to guarantee it doesn't use a broken imported file
+        merged = pd.concat([returns.rename("returns"), factors_df], axis=1, join="inner").dropna()
+        excess_y = merged["returns"] - merged["RF"]
+        X = merged[["Mkt-RF", "SMB", "HML"]]
+        X_const = sm.add_constant(X)
+        
+        model = sm.OLS(excess_y, X_const).fit()
+        
+        ff_alpha = float(model.params.get("const", 0.0)) * 252
+        b_mkt = float(model.params.get("Mkt-RF", 0.0))
+        b_smb = float(model.params.get("SMB", 0.0))
+        b_hml = float(model.params.get("HML", 0.0))
+        ff_r2 = float(model.rsquared)
+        # ----------------------------
 
         f1, f2, f3, f4, f5 = st.columns(5)
         f1.metric("Annual Alpha", f"{ff_alpha:.2%}")
