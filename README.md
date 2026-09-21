@@ -27,3 +27,5 @@ Launch the application:
 Upload a CSV or TXT file with your daily returns through the sidebar.
 
 (Note: The file needs three columns: Date, Portfolio Return, and SPY. Returns should be formatted as decimals, e.g., 0.015 for 1.5%).
+
+Or run this link: https://mgb3zjvlsr8qfuogqmeqib.streamlit.app/
